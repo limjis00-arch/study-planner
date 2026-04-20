@@ -1,0 +1,614 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  BookOpen, 
+  CalendarDays, 
+  CheckSquare, 
+  Settings, 
+  Plus, 
+  Trash2, 
+  Download, 
+  Upload, 
+  FileText,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
+
+// --- 기본 데이터 템플릿 ---
+const defaultData = {
+  overview: {
+    mainTitle: '',
+    sections: [{ id: Date.now().toString(), subtitle: '첫번째 공부 주제', memo: '' }]
+  },
+  weekly: {
+    '월': [], '화': [], '수': [], '목': [], '금': [], '토': [], '일': []
+  },
+  daily: []
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [printMode, setPrintMode] = useState('');
+  
+  // 로컬 스토리지 데이터 불러오기 (데이터 꼬임 방지를 위해 V3로 키 변경)
+  const [appData, setAppData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studyPlannerDataV3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed) return defaultData;
+        return {
+          overview: parsed.overview || defaultData.overview,
+          weekly: parsed.weekly || defaultData.weekly,
+          daily: Array.isArray(parsed.daily) ? parsed.daily : []
+        };
+      }
+      return defaultData;
+    } catch {
+      return defaultData;
+    }
+  });
+
+  // 데이터 변경 시 자동 저장
+  useEffect(() => {
+    localStorage.setItem('studyPlannerDataV3', JSON.stringify(appData));
+  }, [appData]);
+
+  const updateOverview = (newData) => setAppData(prev => ({ ...prev, overview: newData }));
+  const updateWeekly = (newData) => setAppData(prev => ({ ...prev, weekly: newData }));
+  const updateDaily = (newData) => setAppData(prev => ({ ...prev, daily: newData }));
+
+  // --- 공통 헤더 (수정된 디자인 반영) ---
+  const Header = ({ title }) => (
+    <div className="pt-8 pb-3 px-5 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-gray-100 flex flex-col items-start justify-center">
+      <h1 className="text-3xl font-black text-blue-600 tracking-tighter">스터디 플래너</h1>
+      <h2 className="text-lg font-bold text-gray-700 mt-1">{title}</h2>
+    </div>
+  );
+
+  // --- 투두 리스트 아이템 컴포넌트 (주간/일간 공통, 에러 방지 강화) ---
+  const TaskList = ({ tasks = [], onUpdateTasks }) => {
+    const safeTasks = Array.isArray(tasks) ? tasks : [];
+    
+    const addTask = () => {
+      onUpdateTasks([...safeTasks, { id: Date.now().toString(), text: '', completed: false, subtasks: [] }]);
+    };
+
+    const updateTask = (id, field, value) => {
+      onUpdateTasks(safeTasks.map(t => t.id === id ? { ...t, [field]: value } : t));
+    };
+
+    const deleteTask = (id) => {
+      onUpdateTasks(safeTasks.filter(t => t.id !== id));
+    };
+
+    const addSubtask = (taskId) => {
+      onUpdateTasks(safeTasks.map(t => {
+        if (t.id === taskId) {
+          const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+          return { ...t, subtasks: [...subs, { id: Date.now().toString(), text: '', completed: false }] };
+        }
+        return t;
+      }));
+    };
+
+    const updateSubtask = (taskId, subId, field, value) => {
+      onUpdateTasks(safeTasks.map(t => {
+        if (t.id === taskId) {
+          const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+          const newSub = subs.map(s => s.id === subId ? { ...s, [field]: value } : s);
+          return { ...t, subtasks: newSub };
+        }
+        return t;
+      }));
+    };
+
+    const deleteSubtask = (taskId, subId) => {
+      onUpdateTasks(safeTasks.map(t => {
+        if (t.id === taskId) {
+          const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+          return { ...t, subtasks: subs.filter(s => s.id !== subId) };
+        }
+        return t;
+      }));
+    };
+
+    return (
+      <div className="space-y-3">
+        {safeTasks.map(task => (
+          <div key={task.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 transition-all">
+            <div className="flex items-start gap-3">
+              <input 
+                type="checkbox" 
+                checked={task.completed || false}
+                onChange={(e) => updateTask(task.id, 'completed', e.target.checked)}
+                className="mt-1 w-5 h-5 rounded-full border-2 border-gray-300 text-blue-500 focus:ring-blue-500 checked:bg-blue-500 cursor-pointer shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <input
+                  type="text"
+                  placeholder="무엇을 공부할까요?"
+                  value={task.text || ''}
+                  onChange={(e) => updateTask(task.id, 'text', e.target.value)}
+                  className={`w-full bg-transparent focus:outline-none font-medium transition-all truncate ${task.completed ? 'text-gray-400 line-through decoration-2 decoration-gray-300' : 'text-gray-800'}`}
+                />
+              </div>
+              <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 shrink-0">
+                <Trash2 size={16} />
+              </button>
+            </div>
+
+            {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
+              <div className="mt-3 ml-8 space-y-2 border-l-2 border-gray-100 pl-3">
+                {task.subtasks.map(sub => (
+                  <div key={sub.id} className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      checked={sub.completed || false}
+                      onChange={(e) => updateSubtask(task.id, sub.id, 'completed', e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-400 focus:ring-blue-400 cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      placeholder="세부 항목"
+                      value={sub.text || ''}
+                      onChange={(e) => updateSubtask(task.id, sub.id, 'text', e.target.value)}
+                      className={`flex-1 min-w-0 bg-transparent text-sm focus:outline-none truncate ${sub.completed ? 'text-gray-400 line-through' : 'text-gray-600'}`}
+                    />
+                    <button onClick={() => deleteSubtask(task.id, sub.id)} className="text-gray-200 hover:text-red-400 shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <button 
+              onClick={() => addSubtask(task.id)}
+              className="mt-2 ml-8 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-600 font-medium"
+            >
+              <Plus size={12} /> 세부 항목 추가
+            </button>
+          </div>
+        ))}
+        
+        <button 
+          onClick={addTask}
+          className="w-full py-3.5 flex items-center justify-center gap-2 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/30 transition-colors"
+        >
+          <Plus size={18} /> 새 할 일 추가
+        </button>
+      </div>
+    );
+  };
+
+  // --- 화면 렌더링: 1. 개요 (Overview) ---
+  const renderOverview = () => {
+    const mainTitle = appData.overview?.mainTitle || '';
+    const sections = Array.isArray(appData.overview?.sections) ? appData.overview.sections : [];
+
+    const addSection = () => {
+      updateOverview({
+        ...appData.overview,
+        sections: [...sections, { id: Date.now().toString(), subtitle: '', memo: '' }]
+      });
+    };
+
+    const updateSection = (id, field, value) => {
+      const newSections = sections.map(sec => sec.id === id ? { ...sec, [field]: value } : sec);
+      updateOverview({ ...appData.overview, sections: newSections });
+    };
+
+    const deleteSection = (id) => {
+      const newSections = sections.filter(sec => sec.id !== id);
+      updateOverview({ ...appData.overview, sections: newSections });
+    };
+
+    return (
+      <div className="pb-24 animate-in fade-in slide-in-from-bottom-4">
+        <Header title="학습 개요" />
+        <div className="p-4 space-y-6">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <label className="text-xs font-bold text-blue-500 mb-1 block">최종 목표</label>
+            <input
+              type="text"
+              className="w-full text-xl font-bold bg-transparent focus:outline-none"
+              placeholder="대제목 (예: 2026년 공무원 시험 합격)"
+              value={mainTitle}
+              onChange={(e) => updateOverview({ ...appData.overview, mainTitle: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-4">
+            {sections.map((section) => (
+              <div key={section.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative group">
+                <button 
+                  onClick={() => deleteSection(section.id)} 
+                  className="absolute top-4 right-4 p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 rounded-full transition"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <input
+                  type="text"
+                  className="w-[85%] font-semibold text-lg bg-transparent focus:outline-none placeholder-gray-400 mb-3"
+                  placeholder="소제목 (예: 한국사 기출문제 풀이)"
+                  value={section.subtitle || ''}
+                  onChange={(e) => updateSection(section.id, 'subtitle', e.target.value)}
+                />
+                <textarea
+                  className="w-full min-h-[100px] bg-gray-50 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none text-gray-700"
+                  placeholder="어떻게 공부할 건지 자세한 계획을 줄글로 편하게 적어보세요..."
+                  value={section.memo || ''}
+                  onChange={(e) => updateSection(section.id, 'memo', e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button 
+            onClick={addSection}
+            className="w-full flex items-center justify-center gap-2 bg-blue-50/50 hover:bg-blue-50 text-blue-600 p-4 rounded-2xl font-medium active:scale-95 transition-all"
+          >
+            <Plus size={20} /> 학습 주제 추가하기
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // --- 화면 렌더링: 2. 주간 (Weekly) ---
+  const [expandedDay, setExpandedDay] = useState('월');
+  
+  const renderWeekly = () => {
+    const days = ['월', '화', '수', '목', '금', '토', '일'];
+    const safeWeeklyData = appData.weekly || defaultData.weekly;
+
+    return (
+      <div className="pb-24 animate-in fade-in slide-in-from-bottom-4">
+        <Header title="주간 플래너" />
+        <div className="p-4 space-y-3">
+          {days.map(day => {
+            const tasksForDay = Array.isArray(safeWeeklyData[day]) ? safeWeeklyData[day] : [];
+            const isExpanded = expandedDay === day;
+            const hasTasks = tasksForDay.length > 0;
+            
+            return (
+              <div key={day} className={`bg-white rounded-2xl shadow-sm border ${isExpanded ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'} overflow-hidden transition-all`}>
+                <button 
+                  onClick={() => setExpandedDay(isExpanded ? null : day)}
+                  className={`w-full flex items-center justify-between p-4 ${isExpanded ? 'bg-blue-50/30' : 'bg-white hover:bg-gray-50'} transition-colors`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${isExpanded ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      {day}
+                    </span>
+                    <span className="font-semibold text-gray-700">
+                      {hasTasks ? `${tasksForDay.length}개의 할 일` : '계획 없음'}
+                    </span>
+                  </div>
+                  {isExpanded ? <ChevronUp size={20} className="text-blue-500" /> : <ChevronDown size={20} className="text-gray-400" />}
+                </button>
+                
+                {isExpanded && (
+                  <div className="p-4 bg-gray-50/50 border-t border-gray-50">
+                    <TaskList 
+                      tasks={tasksForDay} 
+                      onUpdateTasks={(newTasks) => updateWeekly({ ...safeWeeklyData, [day]: newTasks })}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // --- 화면 렌더링: 3. 일간 (Daily) ---
+  const renderDaily = () => {
+    const tasks = Array.isArray(appData.daily) ? appData.daily : [];
+    
+    // 에러를 원천 차단하는 가장 안전한 진행률 계산 로직
+    const stats = useMemo(() => {
+      let total = 0;
+      let completed = 0;
+      
+      tasks.forEach(task => {
+        if (task && typeof task.text === 'string' && task.text.trim() !== '') {
+          total += 1;
+          if (task.completed) completed += 1;
+        }
+        
+        if (task && Array.isArray(task.subtasks)) {
+          task.subtasks.forEach(sub => {
+            if (sub && typeof sub.text === 'string' && sub.text.trim() !== '') {
+              total += 1;
+              if (sub.completed) completed += 1;
+            }
+          });
+        }
+      });
+
+      const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
+      return { total, completed, percentage };
+    }, [tasks]);
+
+    return (
+      <div className="pb-24 animate-in fade-in slide-in-from-bottom-4">
+        <Header title="오늘의 플래너" />
+        <div className="p-4">
+          {/* 진행률 바 */}
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 opacity-60"></div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-end mb-3">
+                <span className="text-sm font-bold text-gray-500">오늘의 진행률</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-black text-blue-600">{stats.percentage}</span>
+                  <span className="text-sm font-bold text-blue-400">%</span>
+                </div>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner">
+                <div 
+                  className="h-full rounded-full transition-all duration-700 ease-out relative"
+                  style={{ 
+                    width: `${stats.percentage}%`,
+                    backgroundImage: 'linear-gradient(to right, #3b82f6, #60a5fa)'
+                  }}
+                >
+                  <div className="absolute inset-0 bg-white/20" style={{ backgroundSize: '1rem 1rem', backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)'}}></div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-3 font-medium flex justify-between">
+                <span>계획 {stats.total}개</span>
+                <span>완료 {stats.completed}개</span>
+              </p>
+            </div>
+          </div>
+
+          <TaskList 
+            tasks={tasks} 
+            onUpdateTasks={updateDaily}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // --- 화면 렌더링: 4. 설정 (Settings) ---
+  const renderSettings = () => {
+    const handleExportBackup = () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "study_planner_backup.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    };
+
+    const handleImportBackup = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const importedData = JSON.parse(e.target.result);
+          if(importedData.overview || importedData.daily) {
+             setAppData({
+               overview: importedData.overview || defaultData.overview,
+               weekly: importedData.weekly || defaultData.weekly,
+               daily: Array.isArray(importedData.daily) ? importedData.daily : []
+             });
+             alert('데이터가 성공적으로 복원되었습니다!');
+          } else {
+             alert('올바른 백업 파일 형식이 아닙니다.');
+          }
+        } catch (error) {
+          alert('파일을 읽는 중 오류가 발생했습니다.');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = null; 
+    };
+
+    const triggerPrint = (mode) => {
+      setPrintMode(mode);
+      setTimeout(() => {
+        window.print();
+        setPrintMode('');
+      }, 300);
+    };
+
+    return (
+      <div className="pb-24 animate-in fade-in slide-in-from-bottom-4">
+        <Header title="설정" />
+        <div className="p-4 space-y-6">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <FileText className="text-blue-500" size={20} />
+              <h2 className="text-lg font-bold text-gray-800">PDF 기록 저장</h2>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">원하는 기간의 달성 기록을 PDF 파일로 저장합니다.</p>
+            
+            <div className="grid grid-cols-1 gap-3">
+              <button onClick={() => triggerPrint('daily')} className="flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-gray-700 p-4 rounded-xl font-medium transition">
+                <span>일일 리포트 출력</span><Download size={16} className="text-gray-400" />
+              </button>
+              <button onClick={() => triggerPrint('weekly')} className="flex items-center justify-between bg-gray-50 hover:bg-gray-100 text-gray-700 p-4 rounded-xl font-medium transition">
+                <span>주간 리포트 출력</span><Download size={16} className="text-gray-400" />
+              </button>
+              <button onClick={() => triggerPrint('monthly')} className="flex items-center justify-between bg-blue-50 hover:bg-blue-100 text-blue-700 p-4 rounded-xl font-bold transition">
+                <span>전체 개요 및 종합 리포트 출력</span><Download size={16} className="text-blue-500" />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-2">데이터 백업 / 복원</h2>
+            <p className="text-sm text-gray-500 mb-5">기기를 변경해도 데이터를 안전하게 이동할 수 있습니다.</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={handleExportBackup} className="w-full flex items-center justify-center gap-2 bg-gray-800 text-white py-3.5 rounded-xl font-medium active:bg-gray-700">
+                <Download size={18} /> 데이터 백업 파일 받기 (.json)
+              </button>
+              <label className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-medium hover:bg-gray-200 cursor-pointer transition">
+                <Upload size={18} /> 백업 파일로 복원하기
+                <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- PDF 전용 화면 ---
+  const PrintView = () => {
+    if (!printMode) return null;
+
+    const extractCompleted = (tasks) => {
+      if (!Array.isArray(tasks)) return [];
+      const completed = [];
+      tasks.forEach(t => {
+        const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+        const compSub = subs.filter(s => s.completed && s.text);
+        if ((t.completed && t.text) || compSub.length > 0) {
+          completed.push({
+            text: t.text || '제목 없음',
+            isMainCompleted: t.completed,
+            subs: compSub
+          });
+        }
+      });
+      return completed;
+    };
+
+    const dailyCompleted = extractCompleted(appData.daily);
+    const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
+    return (
+      <div className="hidden print:block p-10 bg-white text-black min-h-screen">
+        <div className="border-b-4 border-gray-800 pb-4 mb-8">
+          <h1 className="text-4xl font-black tracking-tight">스터디 플래너 기록</h1>
+          <p className="text-gray-500 mt-2 font-medium">출력일자: {todayStr}</p>
+        </div>
+
+        {(printMode === 'daily' || printMode === 'monthly') && (
+          <section className="mb-10 page-break-inside-avoid">
+            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">✓ 일간 달성 내역 (오늘)</h2>
+            {dailyCompleted.length === 0 ? (
+              <p className="text-gray-500 italic px-4">오늘 완료된 항목이 없습니다.</p>
+            ) : (
+              <ul className="space-y-4 px-4">
+                {dailyCompleted.map((item, i) => (
+                  <li key={i} className="text-gray-800 text-lg">
+                    <span className="font-bold">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
+                    {item.subs.length > 0 && (
+                      <ul className="mt-2 space-y-1 ml-6 text-base text-gray-600">
+                        {item.subs.map((sub, j) => <li key={j}>• {sub.text}</li>)}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {(printMode === 'weekly' || printMode === 'monthly') && (
+          <section className="mb-10">
+            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">📅 주간 완료 내역</h2>
+            <div className="grid grid-cols-2 gap-6 px-4">
+              {['월', '화', '수', '목', '금', '토', '일'].map(day => {
+                const dayTasks = appData.weekly?.[day] || [];
+                const completedInDay = extractCompleted(dayTasks);
+                if (completedInDay.length === 0) return null;
+                return (
+                  <div key={day} className="page-break-inside-avoid border border-gray-200 p-4 rounded-lg">
+                    <h3 className="font-bold text-lg mb-2 border-b pb-1">{day}요일</h3>
+                    <ul className="space-y-2">
+                      {completedInDay.map((item, i) => (
+                        <li key={i} className="text-sm">
+                          <span className="font-semibold text-gray-800">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
+                          {item.subs.length > 0 && (
+                            <ul className="ml-4 text-gray-600 text-xs mt-1">
+                              {item.subs.map((sub, j) => <li key={j}>- {sub.text}</li>)}
+                            </ul>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {printMode === 'monthly' && (
+          <section className="mb-10 page-break-before-always">
+            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">🎯 현재 학습 목표 개요</h2>
+            <div className="px-4">
+              <h3 className="text-xl font-black text-blue-800 mb-6 border-b-2 border-blue-800 inline-block pb-1">
+                최종 목표: {appData.overview?.mainTitle || '미설정'}
+              </h3>
+              <div className="space-y-6">
+                {(appData.overview?.sections || []).map((sec, i) => (
+                  <div key={i} className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-bold text-lg text-gray-800 mb-2">과목/주제 {i + 1}. {sec.subtitle || '제목 없음'}</h4>
+                    <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed border-l-4 border-gray-300 pl-3">
+                      {sec.memo || '내용 없음'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  };
+
+  const tabs = [
+    { id: 'overview', label: '개요', icon: BookOpen },
+    { id: 'weekly', label: '주간', icon: CalendarDays },
+    { id: 'daily', label: '일간', icon: CheckSquare },
+    { id: 'settings', label: '설정', icon: Settings },
+  ];
+
+  return (
+    <div className="min-h-[100dvh] bg-gray-100 font-sans selection:bg-blue-200 flex justify-center">
+      <div className={`print:hidden w-full max-w-md bg-gray-50 h-[100dvh] relative shadow-2xl overflow-hidden flex flex-col`}>
+        <main className="flex-1 overflow-y-auto hide-scrollbar relative">
+          {activeTab === 'overview' && renderOverview()}
+          {activeTab === 'weekly' && renderWeekly()}
+          {activeTab === 'daily' && renderDaily()}
+          {activeTab === 'settings' && renderSettings()}
+        </main>
+        <nav className="shrink-0 bg-white border-t border-gray-200 pb-safe-bottom z-50">
+          <div className="flex justify-around items-center h-16 sm:h-20 px-2">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex flex-col items-center justify-center w-full h-full gap-1 transition-all duration-200 ${
+                    isActive ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-full transition-all duration-300 ${isActive ? 'bg-blue-50 scale-110' : ''}`}>
+                    <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                  </div>
+                  <span className={`text-[10px] sm:text-xs transition-all ${isActive ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      </div>
+      <PrintView />
+    </div>
+  );
+}
