@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>스터디 플래너</title>
     
-    <!-- 아이폰 홈 화면 추가용 설정 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="스터디 플래너">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3363/3363198.png">
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -19,14 +17,10 @@
         }
     </script>
 
-    <!-- 폰트 (Pretendard) -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
 
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -46,7 +40,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // 💡 핵심 해결책: 충돌을 방지하기 위해 React 내부에서 직접 안전하게 그리는 아이콘 컴포넌트
+        // --- 아이콘 컴포넌트 ---
         const Icon = ({ name, size = 24, className = '', strokeWidth = 2, onClick }) => {
             const icons = {
                 'trash-2': <React.Fragment><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></React.Fragment>,
@@ -69,6 +63,219 @@
             );
         };
 
+        // --- 공통 헤더 컴포넌트 (App 외부로 분리) ---
+        const Header = ({ title }) => (
+            <div className="pt-8 pb-4 px-5 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-gray-100 flex flex-col items-start justify-center shadow-sm">
+                <h1 className="text-3xl font-black text-blue-600 tracking-tighter">스터디 플래너</h1>
+                <h2 className="text-lg font-bold text-gray-700 mt-1">{title}</h2>
+            </div>
+        );
+
+        // --- 💡 포커스 해제 문제를 해결하기 위해 App 외부로 분리된 투두 리스트 컴포넌트 ---
+        const TaskList = ({ tasks = [], onUpdateTasks }) => {
+            const safeTasks = (Array.isArray(tasks) ? tasks : []).filter(t => t && typeof t === 'object');
+            
+            const addTask = () => onUpdateTasks([...safeTasks, { id: Date.now().toString(), text: '', completed: false, subtasks: [] }]);
+            
+            const updateTask = (id, field, value) => onUpdateTasks(safeTasks.map(t => t.id === id ? { ...t, [field]: value } : t));
+            
+            const deleteTask = (id) => onUpdateTasks(safeTasks.filter(t => t.id !== id));
+
+            const addSubtask = (taskId) => {
+                onUpdateTasks(safeTasks.map(t => {
+                    if (t.id === taskId) {
+                        const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+                        return { ...t, subtasks: [...subs, { id: Date.now().toString(), text: '', completed: false }] };
+                    }
+                    return t;
+                }));
+            };
+
+            const updateSubtask = (taskId, subId, field, value) => {
+                onUpdateTasks(safeTasks.map(t => {
+                    if (t.id === taskId) {
+                        const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+                        return { ...t, subtasks: subs.map(s => s.id === subId ? { ...s, [field]: value } : s) };
+                    }
+                    return t;
+                }));
+            };
+
+            const deleteSubtask = (taskId, subId) => {
+                onUpdateTasks(safeTasks.map(t => {
+                    if (t.id === taskId) {
+                        const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+                        return { ...t, subtasks: subs.filter(s => s.id !== subId) };
+                    }
+                    return t;
+                }));
+            };
+
+            return (
+                <div className="space-y-3">
+                    {safeTasks.map((task, index) => (
+                        <div key={task.id || `task-${index}`} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 transition-all">
+                            <div className="flex items-start gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={task.completed || false}
+                                    onChange={(e) => updateTask(task.id, 'completed', e.target.checked)}
+                                    className="mt-1 w-5 h-5 rounded-full border-2 border-gray-300 text-blue-500 focus:ring-blue-500 cursor-pointer shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <input
+                                        type="text"
+                                        placeholder="무엇을 공부할까요?"
+                                        value={task.text || ''}
+                                        onChange={(e) => updateTask(task.id, 'text', e.target.value)}
+                                        className={`w-full bg-transparent focus:outline-none font-medium transition-all truncate ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'}`}
+                                    />
+                                </div>
+                                <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 shrink-0">
+                                    <Icon name="trash-2" size={16} />
+                                </button>
+                            </div>
+
+                            {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
+                                <div className="mt-3 ml-8 space-y-2 border-l-2 border-gray-100 pl-3">
+                                    {task.subtasks.map((sub, subIndex) => {
+                                        if (!sub || typeof sub !== 'object') return null;
+                                        return (
+                                            <div key={sub.id || `sub-${subIndex}`} className="flex items-center gap-2">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={sub.completed || false}
+                                                    onChange={(e) => updateSubtask(task.id, sub.id, 'completed', e.target.checked)}
+                                                    className="w-4 h-4 rounded border-gray-300 text-blue-400 focus:ring-blue-400 cursor-pointer shrink-0"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="세부 항목"
+                                                    value={sub.text || ''}
+                                                    onChange={(e) => updateSubtask(task.id, sub.id, 'text', e.target.value)}
+                                                    className={`flex-1 min-w-0 bg-transparent text-sm focus:outline-none truncate ${sub.completed ? 'text-gray-400 line-through' : 'text-gray-600'}`}
+                                                />
+                                                <button onClick={() => deleteSubtask(task.id, sub.id)} className="text-gray-200 hover:text-red-400 shrink-0">
+                                                    <Icon name="trash-2" size={14} />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            
+                            <button 
+                                onClick={() => addSubtask(task.id)}
+                                className="mt-2 ml-8 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-600 font-medium"
+                            >
+                                <Icon name="plus" size={12} /> 세부 항목 추가
+                            </button>
+                        </div>
+                    ))}
+                    
+                    <button 
+                        onClick={addTask}
+                        className="w-full py-3.5 flex items-center justify-center gap-2 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/30 transition-colors"
+                    >
+                        <Icon name="plus" size={18} /> 새 할 일 추가
+                    </button>
+                </div>
+            );
+        };
+
+        // --- PDF 전용 컴포넌트 (App 외부로 분리) ---
+        const PrintView = ({ printMode, appData }) => {
+            if (!printMode) return null;
+
+            const extractCompleted = (tasks) => {
+                if (!Array.isArray(tasks)) return [];
+                const completed = [];
+                tasks.forEach(t => {
+                    if (!t || typeof t !== 'object') return;
+                    const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+                    const compSub = subs.filter(s => s && s.completed && s.text);
+                    if ((t.completed && t.text) || compSub.length > 0) {
+                        completed.push({ text: t.text || '제목 없음', isMainCompleted: t.completed, subs: compSub });
+                    }
+                });
+                return completed;
+            };
+
+            const dailyCompleted = extractCompleted(appData.daily);
+            const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
+            return (
+                <div className="print-only hidden p-10 bg-white text-black min-h-screen">
+                    <div className="border-b-4 border-gray-800 pb-4 mb-8">
+                        <h1 className="text-4xl font-black tracking-tight">스터디 플래너 기록</h1>
+                        <p className="text-gray-500 mt-2 font-medium">출력일자: {todayStr}</p>
+                    </div>
+
+                    {(printMode === 'daily' || printMode === 'monthly') && (
+                        <section className="mb-10 page-break-inside-avoid">
+                            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">✓ 일간 달성 내역 (오늘)</h2>
+                            {dailyCompleted.length === 0 ? <p className="text-gray-500 px-4">오늘 완료된 항목이 없습니다.</p> : (
+                                <ul className="space-y-4 px-4">
+                                    {dailyCompleted.map((item, i) => (
+                                        <li key={i} className="text-gray-800 text-lg">
+                                            <span className="font-bold">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
+                                            {item.subs.length > 0 && (
+                                                <ul className="mt-2 space-y-1 ml-6 text-base text-gray-600">
+                                                    {item.subs.map((sub, j) => <li key={j}>• {sub.text}</li>)}
+                                                </ul>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    )}
+
+                    {(printMode === 'weekly' || printMode === 'monthly') && (
+                        <section className="mb-10">
+                            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">📅 주간 완료 내역</h2>
+                            <div className="grid grid-cols-2 gap-6 px-4">
+                                {['월', '화', '수', '목', '금', '토', '일'].map(day => {
+                                    const completedInDay = extractCompleted(appData.weekly?.[day] || []);
+                                    if (completedInDay.length === 0) return null;
+                                    return (
+                                        <div key={day} className="border border-gray-200 p-4 rounded-lg">
+                                            <h3 className="font-bold text-lg mb-2 border-b pb-1">{day}요일</h3>
+                                            <ul className="space-y-2">
+                                                {completedInDay.map((item, i) => (
+                                                    <li key={i} className="text-sm">
+                                                        <span className="font-semibold text-gray-800">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
+                                                        {item.subs.length > 0 && <ul className="ml-4 text-gray-600 text-xs mt-1">{item.subs.map((sub, j) => <li key={j}>- {sub.text}</li>)}</ul>}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {printMode === 'monthly' && (
+                        <section className="mb-10 page-break-before-always">
+                            <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">🎯 현재 학습 목표 개요</h2>
+                            <div className="px-4">
+                                <h3 className="text-xl font-black text-blue-800 mb-6 border-b-2 border-blue-800 inline-block pb-1">최종 목표: {appData.overview?.mainTitle || '미설정'}</h3>
+                                <div className="space-y-6">
+                                    {(appData.overview?.sections || []).map((sec, i) => (
+                                        <div key={i} className="bg-gray-50 p-4 rounded-lg">
+                                            <h4 className="font-bold text-lg text-gray-800 mb-2">주제 {i + 1}. {sec.subtitle || '제목 없음'}</h4>
+                                            <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed border-l-4 border-gray-300 pl-3">{sec.memo || '내용 없음'}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+                    )}
+                </div>
+            );
+        };
+
         const defaultData = {
             overview: { mainTitle: '', sections: [{ id: Date.now().toString(), subtitle: '첫번째 공부 주제', memo: '' }] },
             weekly: { '월': [], '화': [], '수': [], '목': [], '금': [], '토': [], '일': [] },
@@ -79,7 +286,6 @@
             const [activeTab, setActiveTab] = useState('overview');
             const [printMode, setPrintMode] = useState('');
             
-            // 데이터 꼬임 현상을 완전히 벗어나기 위해 저장소 이름을 완전히 새로고침(GithubV2)
             const [appData, setAppData] = useState(() => {
                 try {
                     const saved = localStorage.getItem('studyPlannerGithubV2');
@@ -104,125 +310,6 @@
             const updateOverview = (newData) => setAppData(prev => ({ ...prev, overview: newData }));
             const updateWeekly = (newData) => setAppData(prev => ({ ...prev, weekly: newData }));
             const updateDaily = (newData) => setAppData(prev => ({ ...prev, daily: newData }));
-
-            // --- 공통 헤더 ---
-            const Header = ({ title }) => (
-                <div className="pt-8 pb-4 px-5 bg-white/90 backdrop-blur-md sticky top-0 z-10 border-b border-gray-100 flex flex-col items-start justify-center shadow-sm">
-                    <h1 className="text-3xl font-black text-blue-600 tracking-tighter">스터디 플래너</h1>
-                    <h2 className="text-lg font-bold text-gray-700 mt-1">{title}</h2>
-                </div>
-            );
-
-            // --- 투두 리스트 (공통) - 데이터 무결성 방어 로직 추가 ---
-            const TaskList = ({ tasks = [], onUpdateTasks }) => {
-                // 비정상적인 데이터가 들어와도 무시하도록 필터링
-                const safeTasks = (Array.isArray(tasks) ? tasks : []).filter(t => t && typeof t === 'object');
-                
-                const addTask = () => onUpdateTasks([...safeTasks, { id: Date.now().toString(), text: '', completed: false, subtasks: [] }]);
-                const updateTask = (id, field, value) => onUpdateTasks(safeTasks.map(t => t.id === id ? { ...t, [field]: value } : t));
-                const deleteTask = (id) => onUpdateTasks(safeTasks.filter(t => t.id !== id));
-
-                const addSubtask = (taskId) => {
-                    onUpdateTasks(safeTasks.map(t => {
-                        if (t.id === taskId) {
-                            const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
-                            return { ...t, subtasks: [...subs, { id: Date.now().toString(), text: '', completed: false }] };
-                        }
-                        return t;
-                    }));
-                };
-
-                const updateSubtask = (taskId, subId, field, value) => {
-                    onUpdateTasks(safeTasks.map(t => {
-                        if (t.id === taskId) {
-                            const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
-                            return { ...t, subtasks: subs.map(s => s.id === subId ? { ...s, [field]: value } : s) };
-                        }
-                        return t;
-                    }));
-                };
-
-                const deleteSubtask = (taskId, subId) => {
-                    onUpdateTasks(safeTasks.map(t => {
-                        if (t.id === taskId) {
-                            const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
-                            return { ...t, subtasks: subs.filter(s => s.id !== subId) };
-                        }
-                        return t;
-                    }));
-                };
-
-                return (
-                    <div className="space-y-3">
-                        {safeTasks.map(task => (
-                            <div key={task.id || Math.random().toString()} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 transition-all">
-                                <div className="flex items-start gap-3">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={task.completed || false}
-                                        onChange={(e) => updateTask(task.id, 'completed', e.target.checked)}
-                                        className="mt-1 w-5 h-5 rounded-full border-2 border-gray-300 text-blue-500 focus:ring-blue-500 cursor-pointer shrink-0"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <input
-                                            type="text"
-                                            placeholder="무엇을 공부할까요?"
-                                            value={task.text || ''}
-                                            onChange={(e) => updateTask(task.id, 'text', e.target.value)}
-                                            className={`w-full bg-transparent focus:outline-none font-medium transition-all truncate ${task.completed ? 'text-gray-400 line-through' : 'text-gray-800'}`}
-                                        />
-                                    </div>
-                                    <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 p-1 shrink-0">
-                                        <Icon name="trash-2" size={16} />
-                                    </button>
-                                </div>
-
-                                {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
-                                    <div className="mt-3 ml-8 space-y-2 border-l-2 border-gray-100 pl-3">
-                                        {task.subtasks.map(sub => {
-                                            if (!sub || typeof sub !== 'object') return null;
-                                            return (
-                                                <div key={sub.id || Math.random().toString()} className="flex items-center gap-2">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={sub.completed || false}
-                                                        onChange={(e) => updateSubtask(task.id, sub.id, 'completed', e.target.checked)}
-                                                        className="w-4 h-4 rounded border-gray-300 text-blue-400 focus:ring-blue-400 cursor-pointer shrink-0"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="세부 항목"
-                                                        value={sub.text || ''}
-                                                        onChange={(e) => updateSubtask(task.id, sub.id, 'text', e.target.value)}
-                                                        className={`flex-1 min-w-0 bg-transparent text-sm focus:outline-none truncate ${sub.completed ? 'text-gray-400 line-through' : 'text-gray-600'}`}
-                                                    />
-                                                    <button onClick={() => deleteSubtask(task.id, sub.id)} className="text-gray-200 hover:text-red-400 shrink-0">
-                                                        <Icon name="trash-2" size={14} />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                
-                                <button 
-                                    onClick={() => addSubtask(task.id)}
-                                    className="mt-2 ml-8 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-600 font-medium"
-                                >
-                                    <Icon name="plus" size={12} /> 세부 항목 추가
-                                </button>
-                            </div>
-                        ))}
-                        
-                        <button 
-                            onClick={addTask}
-                            className="w-full py-3.5 flex items-center justify-center gap-2 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50/30 transition-colors"
-                        >
-                            <Icon name="plus" size={18} /> 새 할 일 추가
-                        </button>
-                    </div>
-                );
-            };
 
             // --- 1. 개요 ---
             const renderOverview = () => {
@@ -249,8 +336,8 @@
                             </div>
 
                             <div className="space-y-4">
-                                {sections.map((section) => (
-                                    <div key={section.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative group">
+                                {sections.map((section, index) => (
+                                    <div key={section.id || `section-${index}`} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative group">
                                         <button onClick={() => deleteSection(section.id)} className="absolute top-4 right-4 p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 rounded-full">
                                             <Icon name="trash-2" size={16} />
                                         </button>
@@ -431,98 +518,6 @@
                 );
             };
 
-            // --- PDF 전용 화면 ---
-            const PrintView = () => {
-                if (!printMode) return null;
-                const extractCompleted = (tasks) => {
-                    if (!Array.isArray(tasks)) return [];
-                    const completed = [];
-                    tasks.forEach(t => {
-                        if (!t || typeof t !== 'object') return;
-                        const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
-                        const compSub = subs.filter(s => s && s.completed && s.text);
-                        if ((t.completed && t.text) || compSub.length > 0) {
-                            completed.push({ text: t.text || '제목 없음', isMainCompleted: t.completed, subs: compSub });
-                        }
-                    });
-                    return completed;
-                };
-
-                const dailyCompleted = extractCompleted(appData.daily);
-                const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-
-                return (
-                    <div className="print-only hidden p-10 bg-white text-black min-h-screen">
-                        <div className="border-b-4 border-gray-800 pb-4 mb-8">
-                            <h1 className="text-4xl font-black tracking-tight">스터디 플래너 기록</h1>
-                            <p className="text-gray-500 mt-2 font-medium">출력일자: {todayStr}</p>
-                        </div>
-
-                        {(printMode === 'daily' || printMode === 'monthly') && (
-                            <section className="mb-10 page-break-inside-avoid">
-                                <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">✓ 일간 달성 내역 (오늘)</h2>
-                                {dailyCompleted.length === 0 ? <p className="text-gray-500 px-4">오늘 완료된 항목이 없습니다.</p> : (
-                                    <ul className="space-y-4 px-4">
-                                        {dailyCompleted.map((item, i) => (
-                                            <li key={i} className="text-gray-800 text-lg">
-                                                <span className="font-bold">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
-                                                {item.subs.length > 0 && (
-                                                    <ul className="mt-2 space-y-1 ml-6 text-base text-gray-600">
-                                                        {item.subs.map((sub, j) => <li key={j}>• {sub.text}</li>)}
-                                                    </ul>
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </section>
-                        )}
-
-                        {(printMode === 'weekly' || printMode === 'monthly') && (
-                            <section className="mb-10">
-                                <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">📅 주간 완료 내역</h2>
-                                <div className="grid grid-cols-2 gap-6 px-4">
-                                    {['월', '화', '수', '목', '금', '토', '일'].map(day => {
-                                        const completedInDay = extractCompleted(appData.weekly?.[day] || []);
-                                        if (completedInDay.length === 0) return null;
-                                        return (
-                                            <div key={day} className="border border-gray-200 p-4 rounded-lg">
-                                                <h3 className="font-bold text-lg mb-2 border-b pb-1">{day}요일</h3>
-                                                <ul className="space-y-2">
-                                                    {completedInDay.map((item, i) => (
-                                                        <li key={i} className="text-sm">
-                                                            <span className="font-semibold text-gray-800">{item.isMainCompleted ? '☑' : '☐'} {item.text}</span>
-                                                            {item.subs.length > 0 && <ul className="ml-4 text-gray-600 text-xs mt-1">{item.subs.map((sub, j) => <li key={j}>- {sub.text}</li>)}</ul>}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </section>
-                        )}
-
-                        {printMode === 'monthly' && (
-                            <section className="mb-10 page-break-before-always">
-                                <h2 className="text-2xl font-bold mb-4 bg-gray-100 p-2 rounded">🎯 현재 학습 목표 개요</h2>
-                                <div className="px-4">
-                                    <h3 className="text-xl font-black text-blue-800 mb-6 border-b-2 border-blue-800 inline-block pb-1">최종 목표: {appData.overview?.mainTitle || '미설정'}</h3>
-                                    <div className="space-y-6">
-                                        {(appData.overview?.sections || []).map((sec, i) => (
-                                            <div key={i} className="bg-gray-50 p-4 rounded-lg">
-                                                <h4 className="font-bold text-lg text-gray-800 mb-2">주제 {i + 1}. {sec.subtitle || '제목 없음'}</h4>
-                                                <p className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed border-l-4 border-gray-300 pl-3">{sec.memo || '내용 없음'}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </section>
-                        )}
-                    </div>
-                );
-            };
-
             const tabs = [
                 { id: 'overview', label: '개요', iconName: 'book-open' },
                 { id: 'weekly', label: '주간', iconName: 'calendar-days' },
@@ -555,7 +550,7 @@
                             </div>
                         </nav>
                     </div>
-                    <PrintView />
+                    <PrintView printMode={printMode} appData={appData} />
                 </div>
             );
         }
